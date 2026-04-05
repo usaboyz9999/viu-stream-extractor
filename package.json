@@ -1,7 +1,7 @@
 {
   "name": "viu-stream-extractor",
   "version": "1.0.0",
-  "description": "سحابة استخراج روابط بث Viu.com باستخدام Puppeteer على GitHub Actions",
+  "description": "سحابة استخراج روابط بث Viu.com تلقائياً",
   "main": "extractor.js",
   "scripts": {
     "extract": "node extractor.js"
