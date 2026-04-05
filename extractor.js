@@ -1,13 +1,10 @@
-// extractor.js - سكريبت استخراج روابط البث من Viu.com
-// 📍 مصمم ليعمل على GitHub Actions بدون أي تبعيات خارجية معقدة
+// extractor.js - سكريبت استخراج روابط البث من Viu.com (نسخة ذكية مع تصحيح الأخطاء)
+// 📍 يسجل كل طلب شبكة ويبحث في محتوى الصفحة أيضاً
 
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
-// 🔗 ==========================================
-// 📝 منطقة إعداد الروابط - عدّل هنا لإضافة حلقات جديدة
-// 🔗 ==========================================
 const EPISODES_TO_EXTRACT = [
   {
     id: 1,
@@ -21,94 +18,146 @@ const EPISODES_TO_EXTRACT = [
     pageUrl: "https://www.viu.com/ott/sa/en/vod/2961646/Ali-Klay",
     seriesId: 310
   }
-  // ➕ أضف حلقات جديدة هنا بنفس الهيكل
 ];
 
-// 📁 مسار ملف الخرج
 const OUTPUT_FILE = path.join(process.env.GITHUB_WORKSPACE || __dirname, 'viu_links.json');
-
-// ⏱️ إعدادات الانتظار
 const CONFIG = {
-  pageLoadTimeout: 40000,
-  waitAfterLoad: 12000,
-  delayBetweenEpisodes: 3000
+  pageLoadTimeout: 50000,
+  waitAfterLoad: 20000,  // زيادة الانتظار لـ 20 ثانية
+  delayBetweenEpisodes: 5000
 };
 
-/**
- * 🎯 استخراج رابط بث من صفحة معينة
- */
 async function extractStreamUrl(pageUrl) {
   let browser = null;
   try {
-    console.log('🔍 [1/4] جاري فتح المتصفح على سحابة GitHub...');
+    console.log('🔍 [1/5] جاري فتح المتصفح...');
     
-    // 🚀 تشغيل متصفح Chromium المدمج (يعمل تلقائياً على GitHub)
     browser = await puppeteer.launch({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox'] // مطلوب للخوادم السحابية
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
     
     const page = await browser.newPage();
     
-    // 🎭 محاكاة متصفح حقيقي
+    // 🎭 محاكاة متصفح حقيقي جداً
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none'
     });
 
-    const capturedUrls = [];
+    const allRequests = [];
+    const streamCandidates = [];
     
-    // ✅ اعتراض طلبات الشبكة
+    // ✅ اعتراض وتسجيل كل طلب شبكة
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const url = request.url();
-      if (url.includes('.m3u8') || url.includes('.mpd') || url.includes('manifest')) {
-        console.log(`🎯 [اعتراض] تم اكتشاف رابط بث: ${url.substring(0, 80)}...`);
-        capturedUrls.push(url);
+      allRequests.push(url);
+      
+      // 🔍 أنماط بحث أوسع للروابط
+      if (
+        url.includes('.m3u8') || 
+        url.includes('.mpd') || 
+        url.includes('manifest') ||
+        url.includes('video') && url.includes('.json') ||
+        url.includes('api') && url.includes('stream') ||
+        url.includes('cdn') && (url.includes('video') || url.includes('media'))
+      ) {
+        console.log(`🎯 [مرشح] ${url.substring(0, 100)}...`);
+        streamCandidates.push(url);
       }
+      
       request.continue();
     });
 
-    console.log(`🔗 [2/4] تحميل الصفحة: ${pageUrl}`);
+    console.log(`🔗 [2/5] تحميل الصفحة: ${pageUrl}`);
     await page.goto(pageUrl, { 
       waitUntil: 'networkidle2',
       timeout: CONFIG.pageLoadTimeout 
     });
     
-    // ▶️ محاولة تشغيل الفيديو لتحفيز تحميل رابط البث
+    // 🖱️ محاكاة تفاعل المستخدم (لتحفيز تحميل الفيديو)
+    console.log('🖱️ [3/5] محاكاة تفاعل المستخدم...');
+    await page.mouse.move(100, 100);
+    await page.waitForTimeout(2000);
+    
     try {
       await page.evaluate(() => {
         const video = document.querySelector('video');
-        if (video) { video.muted = true; video.play().catch(() => {}); }
+        if (video) { 
+          video.muted = true; 
+          video.play().catch(() => {}); 
+          video.click(); // محاولة النقر على الفيديو
+        }
+        // محاولة النقر على زر التشغيل إذا وجد
+        const playBtn = document.querySelector('[data-testid*="play"], .play-button, button[class*="play"]');
+        if (playBtn) playBtn.click();
       });
-      console.log('▶️ [3/4] تم تشغيل الفيديو تلقائياً');
+      console.log('▶️ تم محاولة التشغيل');
     } catch (e) {}
     
-    console.log(`⏱️ [4/4] انتظار ${CONFIG.waitAfterLoad/1000} ثوانٍ...`);
+    console.log(`⏱️ [4/5] انتظار ${CONFIG.waitAfterLoad/1000} ثوانٍ...`);
     await new Promise(resolve => setTimeout(resolve, CONFIG.waitAfterLoad));
+    
+    // 🔎 البحث داخل محتوى الصفحة عن روابط مخفية
+    console.log('🔎 [5/5] البحث داخل محتوى الصفحة...');
+    const pageContent = await page.content();
+    
+    // أنماط بحث في محتوى الصفحة
+    const pagePatterns = [
+      /["']?(https?:\/\/[^\s"']+\.m3u8[^\s"']*)["']?/gi,
+      /["']?(https?:\/\/[^\s"']+\.mpd[^\s"']*)["']?/gi,
+      /["']?(https?:\/\/[^\s"']+manifest[^\s"']*)["']?/gi,
+      /"file"\s*:\s*["']([^"']+\.m3u8[^"']*)["']/gi,
+      /"src"\s*:\s*["']([^"']+\.m3u8[^"']*)["']/gi,
+      /videoUrl["']?\s*[:=]\s*["']([^"']+)["']/gi
+    ];
+    
+    for (const pattern of pagePatterns) {
+      const matches = pageContent.match(pattern);
+      if (matches) {
+        console.log(`📄 [من الصفحة] ${matches.length} تطابق`);
+        matches.forEach(m => {
+          const clean = m.replace(/["']?(:\s*)?["']?/, '').trim();
+          if (clean.startsWith('http') && !streamCandidates.includes(clean)) {
+            streamCandidates.push(clean);
+            console.log(`   └─ ${clean.substring(0, 80)}...`);
+          }
+        });
+      }
+    }
     
     await browser.close();
     
-    if (capturedUrls.length > 0) {
-      const bestUrl = capturedUrls.reduce((a, b) => a.length > b.length ? a : b);
-      console.log(`✅ تم العثور على ${capturedUrls.length} رابط، الأفضل: ${bestUrl.substring(0, 60)}...`);
+    // 📊 عرض إحصائيات للتصحيح
+    console.log(`\n📊 إحصائيات الطلبات: ${allRequests.length} طلب إجمالي`);
+    if (streamCandidates.length === 0) {
+      console.log('⚠️ لم يتم العثور على أي مرشح. عينة من الطلبات:');
+      allRequests.slice(0, 10).forEach((r, i) => console.log(`   ${i+1}. ${r}`));
+    }
+    
+    // 🏆 اختيار أفضل رابط
+    if (streamCandidates.length > 0) {
+      // نفضل الروابط الأطول (عادةً تحتوي على توكنات كاملة)
+      const bestUrl = streamCandidates.reduce((a, b) => a.length > b.length ? a : b);
+      console.log(`✅ أفضل مرشح: ${bestUrl.substring(0, 80)}...`);
       return bestUrl;
     }
     
-    console.log('❌ لم يتم العثور على أي رابط بث');
+    console.log('❌ لم يتم العثور على أي رابط بث صالح');
     return null;
     
   } catch (err) {
-    console.error(`💥 خطأ أثناء الاستخراج: ${err.message}`);
+    console.error(`💥 خطأ: ${err.message}`);
     if (browser) await browser.close();
     return null;
   }
 }
 
-/**
- * 💾 حفظ الرابط في ملف JSON
- */
 async function saveLinkToJson(seriesId, episodeId, streamUrl, outputFile) {
   try {
     let data = {};
@@ -126,8 +175,7 @@ async function saveLinkToJson(seriesId, episodeId, streamUrl, outputFile) {
     };
     
     fs.writeFileSync(outputFile, JSON.stringify(data, null, 2), 'utf8');
-    console.log(`📁 ✅ تم الحفظ في: ${outputFile}`);
-    console.log(`🔑 المفتاح: "${key}"`);
+    console.log(`📁 ✅ تم الحفظ: ${outputFile}`);
     return true;
   } catch (err) {
     console.error(`❌ فشل الحفظ: ${err.message}`);
@@ -135,9 +183,6 @@ async function saveLinkToJson(seriesId, episodeId, streamUrl, outputFile) {
   }
 }
 
-/**
- * 🚀 الدالة الرئيسية
- */
 async function main() {
   console.log('🎬 ════════════════════════════════════════');
   console.log('🎬   Viu Cloud Extractor - بدء التشغيل');
@@ -162,13 +207,10 @@ async function main() {
   }
   
   console.log(`\n🎬 ════════════════════════════════════════`);
-  console.log(`🎬   اكتمل الاستخراج! النجاح: ${successCount} / ${EPISODES_TO_EXTRACT.length}`);
+  console.log(`🎬   النتيجة: ${successCount} / ${EPISODES_TO_EXTRACT.length}`);
   console.log(`🎬 ════════════════════════════════════════`);
   
   process.exit(successCount === EPISODES_TO_EXTRACT.length ? 0 : 1);
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+main().catch(err => { console.error(err); process.exit(1); });
