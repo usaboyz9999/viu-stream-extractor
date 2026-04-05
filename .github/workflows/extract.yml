@@ -25,7 +25,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          # ❌ تم حذف cache: 'npm' لأنه يتطلب ملف قفل غير موجود
 
       - name: Install deps
         run: npm install
@@ -35,7 +35,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Commit if changed
-        run: bash .github/scripts/commit-changes.sh
+      - name: Commit and push if changed
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add viu_links.json
+          if ! git diff --staged --quiet; then
+            git commit -m "🔄 auto-update: viu_links.json"
+            git push
+          else
+            echo "ℹ️ No changes to commit"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
