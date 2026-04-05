@@ -1,10 +1,9 @@
 // extractor.js - سكريبت استخراج روابط البث من Viu.com
-// 📍 مصمم خصيصاً ليعمل على GitHub Actions بدون أخطاء مسار المتصفح
+// 📍 مصمم ليعمل على GitHub Actions بدون أي تبعيات خارجية معقدة
 
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
-const core = require('@actions/core');
 
 // 🔗 ==========================================
 // 📝 منطقة إعداد الروابط - عدّل هنا لإضافة حلقات جديدة
@@ -22,7 +21,7 @@ const EPISODES_TO_EXTRACT = [
     pageUrl: "https://www.viu.com/ott/sa/en/vod/2961646/Ali-Klay",
     seriesId: 310
   }
-  // ➕ أضف حلقات جديدة هنا بنفس النسق
+  // ➕ أضف حلقات جديدة هنا بنفس الهيكل
 ];
 
 // 📁 مسار ملف الخرج
@@ -40,11 +39,10 @@ const CONFIG = {
  */
 async function extractStreamUrl(pageUrl) {
   let browser = null;
-  
   try {
-    log('🔍 [1/4] جاري فتح المتصفح على سحابة GitHub...');
+    console.log('🔍 [1/4] جاري فتح المتصفح على سحابة GitHub...');
     
-    // 🚀 تشغيل متصفح مدمج (يعمل تلقائياً على GitHub Actions)
+    // 🚀 تشغيل متصفح Chromium المدمج (يعمل تلقائياً على GitHub)
     browser = await puppeteer.launch({
       headless: 'new',
       args: ['--no-sandbox', '--disable-setuid-sandbox'] // مطلوب للخوادم السحابية
@@ -66,13 +64,13 @@ async function extractStreamUrl(pageUrl) {
     page.on('request', (request) => {
       const url = request.url();
       if (url.includes('.m3u8') || url.includes('.mpd') || url.includes('manifest')) {
-        log(`🎯 [اعتراض] تم اكتشاف رابط بث: ${url.substring(0, 80)}...`);
+        console.log(`🎯 [اعتراض] تم اكتشاف رابط بث: ${url.substring(0, 80)}...`);
         capturedUrls.push(url);
       }
       request.continue();
     });
 
-    log(`🔗 [2/4] جاري تحميل الصفحة: ${pageUrl}`);
+    console.log(`🔗 [2/4] تحميل الصفحة: ${pageUrl}`);
     await page.goto(pageUrl, { 
       waitUntil: 'networkidle2',
       timeout: CONFIG.pageLoadTimeout 
@@ -84,25 +82,25 @@ async function extractStreamUrl(pageUrl) {
         const video = document.querySelector('video');
         if (video) { video.muted = true; video.play().catch(() => {}); }
       });
-      log('▶️ [3/4] تم تشغيل الفيديو تلقائياً');
+      console.log('▶️ [3/4] تم تشغيل الفيديو تلقائياً');
     } catch (e) {}
     
-    log(`⏱️ [4/4] انتظار ${CONFIG.waitAfterLoad/1000} ثوانٍ...`);
+    console.log(`⏱️ [4/4] انتظار ${CONFIG.waitAfterLoad/1000} ثوانٍ...`);
     await new Promise(resolve => setTimeout(resolve, CONFIG.waitAfterLoad));
     
     await browser.close();
     
     if (capturedUrls.length > 0) {
       const bestUrl = capturedUrls.reduce((a, b) => a.length > b.length ? a : b);
-      log(`✅ تم العثور على ${capturedUrls.length} رابط، الأفضل: ${bestUrl.substring(0, 60)}...`);
+      console.log(`✅ تم العثور على ${capturedUrls.length} رابط، الأفضل: ${bestUrl.substring(0, 60)}...`);
       return bestUrl;
     }
     
-    log('❌ لم يتم العثور على أي رابط بث');
+    console.log('❌ لم يتم العثور على أي رابط بث');
     return null;
     
   } catch (err) {
-    logError(`💥 خطأ أثناء الاستخراج: ${err.message}`);
+    console.error(`💥 خطأ أثناء الاستخراج: ${err.message}`);
     if (browser) await browser.close();
     return null;
   }
@@ -124,42 +122,38 @@ async function saveLinkToJson(seriesId, episodeId, streamUrl, outputFile) {
       url: streamUrl,
       extractedAt: new Date().toISOString(),
       source: 'github-actions-cloud',
-      episodeTitle: EPISODES_TO_EXTRACT.find(e => e.id === episodeId)?.title || 'Unknown',
-      workflowRun: process.env.GITHUB_RUN_ID || 'manual'
+      episodeTitle: EPISODES_TO_EXTRACT.find(e => e.id === episodeId)?.title || 'Unknown'
     };
     
     fs.writeFileSync(outputFile, JSON.stringify(data, null, 2), 'utf8');
-    log(`📁 ✅ تم الحفظ في: ${outputFile}`);
-    log(`🔑 المفتاح: "${key}"`);
+    console.log(`📁 ✅ تم الحفظ في: ${outputFile}`);
+    console.log(`🔑 المفتاح: "${key}"`);
     return true;
   } catch (err) {
-    logError(`❌ فشل الحفظ: ${err.message}`);
+    console.error(`❌ فشل الحفظ: ${err.message}`);
     return false;
   }
 }
-
-function log(msg) { console.log(msg); if(core?.info) core.info(msg); }
-function logError(msg) { console.error(msg); if(core?.error) core.error(msg); }
 
 /**
  * 🚀 الدالة الرئيسية
  */
 async function main() {
-  log('🎬 ════════════════════════════════════════');
-  log('🎬   Viu Cloud Extractor - بدء التشغيل');
-  log('🎬 ════════════════════════════════════════\n');
+  console.log('🎬 ════════════════════════════════════════');
+  console.log('🎬   Viu Cloud Extractor - بدء التشغيل');
+  console.log('🎬 ════════════════════════════════════════\n');
   
   let successCount = 0;
   for (const episode of EPISODES_TO_EXTRACT) {
-    log(`\n📺 ─────────────────────────────────────`);
-    log(`📺 الحلقة #${episode.id}: ${episode.title}`);
-    log(`📺 ─────────────────────────────────────\n`);
+    console.log(`\n📺 ─────────────────────────────────────`);
+    console.log(`📺 الحلقة #${episode.id}: ${episode.title}`);
+    console.log(`📺 ─────────────────────────────────────\n`);
     
     const streamUrl = await extractStreamUrl(episode.pageUrl);
     if (streamUrl && await saveLinkToJson(episode.seriesId, episode.id, streamUrl, OUTPUT_FILE)) {
       successCount++;
     } else {
-      log(`⚠️ فشل استخراج رابط للحلقة #${episode.id}`);
+      console.log(`⚠️ فشل استخراج رابط للحلقة #${episode.id}`);
     }
     
     if (episode !== EPISODES_TO_EXTRACT[EPISODES_TO_EXTRACT.length - 1]) {
@@ -167,22 +161,14 @@ async function main() {
     }
   }
   
-  log(`\n🎬 ════════════════════════════════════════`);
-  log(`🎬   اكتمل الاستخراج! النجاح: ${successCount} / ${EPISODES_TO_EXTRACT.length}`);
-  log(`🎬 ════════════════════════════════════════`);
+  console.log(`\n🎬 ════════════════════════════════════════`);
+  console.log(`🎬   اكتمل الاستخراج! النجاح: ${successCount} / ${EPISODES_TO_EXTRACT.length}`);
+  console.log(`🎬 ════════════════════════════════════════`);
   
-  if (core?.setOutput) {
-    core.setOutput('success_count', successCount);
-    core.setOutput('total_count', EPISODES_TO_EXTRACT.length);
-  }
-  return successCount === EPISODES_TO_EXTRACT.length;
+  process.exit(successCount === EPISODES_TO_EXTRACT.length ? 0 : 1);
 }
 
-main().then(success => {
-  if (!success && core?.setFailed) core.setFailed('بعض الحلقات فشلت في الاستخراج');
-  process.exit(success ? 0 : 1);
-}).catch(err => {
-  logError(`💥 خطأ غير متوقع: ${err.message}`);
-  if (core?.setFailed) core.setFailed(err.message);
+main().catch(err => {
+  console.error(err);
   process.exit(1);
 });
