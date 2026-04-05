@@ -53,7 +53,7 @@ jobs:
       
       # 3️⃣ تثبيت الاعتمادات
       - name: 📦 Install dependencies
-        run: npm ci --prefer-offline
+        run: npm install --prefer-offline
       
       # 4️⃣ تشغيل سكريبت الاستخراج
       - name: 🎯 Run extractor
@@ -71,7 +71,7 @@ jobs:
       # 6️⃣ حفظ التغييرات في المستودع (تحديث viu_links.json)
       - name: 💾 Commit updated links
         run: |
-          # التحقق من وجود تغييرات
+            # التحقق من وجود تغييرات
           if [ -f viu_links.json ] && [ -s viu_links.json ]; then
             # إعداد هوية الـ commit
             git config --local user.email "github-actions[bot]@users.noreply.github.com"
