@@ -1,5 +1,5 @@
-// extractor.js - سكريبت استخراج روابط البث من Viu.com (نسخة ذكية مع تصحيح الأخطاء)
-// 📍 يسجل كل طلب شبكة ويبحث في محتوى الصفحة أيضاً
+// extractor.js - سكريبت استخراج روابط البث من Viu.com
+// 📍 مصحح ليعمل مع Puppeteer v22+ (بدون waitForTimeout)
 
 const puppeteer = require('puppeteer');
 const fs = require('fs');
@@ -23,9 +23,12 @@ const EPISODES_TO_EXTRACT = [
 const OUTPUT_FILE = path.join(process.env.GITHUB_WORKSPACE || __dirname, 'viu_links.json');
 const CONFIG = {
   pageLoadTimeout: 50000,
-  waitAfterLoad: 20000,  // زيادة الانتظار لـ 20 ثانية
+  waitAfterLoad: 20000,
   delayBetweenEpisodes: 5000
 };
+
+// ✅ دالة مساعدة بديلة لـ waitForTimeout
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function extractStreamUrl(pageUrl) {
   let browser = null;
@@ -39,7 +42,7 @@ async function extractStreamUrl(pageUrl) {
     
     const page = await browser.newPage();
     
-    // 🎭 محاكاة متصفح حقيقي جداً
+    // 🎭 محاكاة متصفح حقيقي
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
@@ -58,14 +61,14 @@ async function extractStreamUrl(pageUrl) {
       const url = request.url();
       allRequests.push(url);
       
-      // 🔍 أنماط بحث أوسع للروابط
+      // 🔍 أنماط بحث أوسع
       if (
         url.includes('.m3u8') || 
         url.includes('.mpd') || 
         url.includes('manifest') ||
-        url.includes('video') && url.includes('.json') ||
-        url.includes('api') && url.includes('stream') ||
-        url.includes('cdn') && (url.includes('video') || url.includes('media'))
+        (url.includes('video') && url.includes('.json')) ||
+        (url.includes('api') && url.includes('stream')) ||
+        (url.includes('cdn') && (url.includes('video') || url.includes('media')))
       ) {
         console.log(`🎯 [مرشح] ${url.substring(0, 100)}...`);
         streamCandidates.push(url);
@@ -80,10 +83,12 @@ async function extractStreamUrl(pageUrl) {
       timeout: CONFIG.pageLoadTimeout 
     });
     
-    // 🖱️ محاكاة تفاعل المستخدم (لتحفيز تحميل الفيديو)
+    // 🖱️ محاكاة تفاعل المستخدم
     console.log('🖱️ [3/5] محاكاة تفاعل المستخدم...');
     await page.mouse.move(100, 100);
-    await page.waitForTimeout(2000);
+    
+    // ✅ استخدام الدالة البديلة بدلاً من page.waitForTimeout
+    await wait(2000);
     
     try {
       await page.evaluate(() => {
@@ -91,9 +96,8 @@ async function extractStreamUrl(pageUrl) {
         if (video) { 
           video.muted = true; 
           video.play().catch(() => {}); 
-          video.click(); // محاولة النقر على الفيديو
+          video.click();
         }
-        // محاولة النقر على زر التشغيل إذا وجد
         const playBtn = document.querySelector('[data-testid*="play"], .play-button, button[class*="play"]');
         if (playBtn) playBtn.click();
       });
@@ -101,13 +105,12 @@ async function extractStreamUrl(pageUrl) {
     } catch (e) {}
     
     console.log(`⏱️ [4/5] انتظار ${CONFIG.waitAfterLoad/1000} ثوانٍ...`);
-    await new Promise(resolve => setTimeout(resolve, CONFIG.waitAfterLoad));
+    await wait(CONFIG.waitAfterLoad);
     
-    // 🔎 البحث داخل محتوى الصفحة عن روابط مخفية
+    // 🔎 البحث داخل محتوى الصفحة
     console.log('🔎 [5/5] البحث داخل محتوى الصفحة...');
     const pageContent = await page.content();
     
-    // أنماط بحث في محتوى الصفحة
     const pagePatterns = [
       /["']?(https?:\/\/[^\s"']+\.m3u8[^\s"']*)["']?/gi,
       /["']?(https?:\/\/[^\s"']+\.mpd[^\s"']*)["']?/gi,
@@ -142,7 +145,6 @@ async function extractStreamUrl(pageUrl) {
     
     // 🏆 اختيار أفضل رابط
     if (streamCandidates.length > 0) {
-      // نفضل الروابط الأطول (عادةً تحتوي على توكنات كاملة)
       const bestUrl = streamCandidates.reduce((a, b) => a.length > b.length ? a : b);
       console.log(`✅ أفضل مرشح: ${bestUrl.substring(0, 80)}...`);
       return bestUrl;
@@ -202,7 +204,7 @@ async function main() {
     }
     
     if (episode !== EPISODES_TO_EXTRACT[EPISODES_TO_EXTRACT.length - 1]) {
-      await new Promise(resolve => setTimeout(resolve, CONFIG.delayBetweenEpisodes));
+      await wait(CONFIG.delayBetweenEpisodes);
     }
   }
   
