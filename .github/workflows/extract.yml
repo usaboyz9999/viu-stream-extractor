@@ -1,24 +1,9 @@
-# .github/workflows/extract.yml
-# سير عمل سحابي لاستخراج روابط بث Viu.com تلقائياً
-# 🆓 مجاني 100% عبر GitHub Actions
+name: Viu Stream Extractor
 
-name: 🎬 Viu Stream Extractor
-
-# 🔄 متى يُشغّل هذا السير العمل؟
 on:
-  # 1️⃣ تشغيل يدوي عند الضغط على زر في GitHub
   workflow_dispatch:
-    inputs:
-      episode_id:
-        description: 'معرف الحلقة للاستخراج (اختياري - اتركه فارغاً لاستخراج الكل)'
-        required: false
-        type: string
-  
-  # 2️⃣ جدولة تلقائية (كل 6 ساعات)
   schedule:
     - cron: '0 */6 * * *'
-  
-  # 3️⃣ عند دفع تغييرات لفرع main (للاختبار)
   push:
     branches: [main]
     paths:
@@ -26,68 +11,31 @@ on:
       - 'package.json'
       - '.github/workflows/extract.yml'
 
-# 🔧 وظائف السير العمل
 jobs:
-  extract-links:
-    name: 🤖 استخراج الروابط
+  extract:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    
     steps:
-      # 1️⃣ جلب كود المستودع
-      - name: 📥 Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      # 2️⃣ إعداد بيئة Node.js
-      - name: 🟢 Setup Node.js
+
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
-      # 3️⃣ تثبيت الاعتمادات (باستخدام npm install بدلاً من ci)
-      - name: 📦 Install dependencies
-        run: npm install --prefer-offline
-      
-      # 4️⃣ تشغيل سكريبت الاستخراج
-      - name: 🎯 Run extractor
+
+      - name: Install deps
+        run: npm install
+
+      - name: Run extractor
         run: npm run extract
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      # 5️⃣ عرض ملف النتيجة في السجل
-      - name: 📋 Show extracted links
-        run: |
-          echo "=== محتوى viu_links.json ==="
-          cat viu_links.json || echo "⚠️ الملف غير موجود"
-          echo "=============================="
-      
-      # 6️⃣ حفظ التغييرات في المستودع (مصحح - تنسيق YAML سليم)
-      - name: 💾 Commit updated links
-        run: |
-          if [ -f viu_links.json ] && [ -s viu_links.json ]; then
-            git config --local user.email "github-actions[bot]@users.noreply.github.com"
-            git config --local user.name "github-actions[bot]"
-            git add viu_links.json
-            if ! git diff --staged --quiet; then
-              git commit -m "🔄 تحديث روابط البث [Auto] - Run: $GITHUB_RUN_ID"
-              echo "✅ تم إنشاء commit جديد"
-            else
-              echo "ℹ️ لا توجد تغييرات"
-            fi
-          else
-            echo "⚠️ ملف viu_links.json غير موجود أو فارغ"
-          fi
-      
-      # 7️⃣ رفع التغييرات إلى GitHub
-      - name: 🚀 Push changes
-        run: git push
+
+      - name: Commit if changed
+        run: bash .github/scripts/commit-changes.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      # 8️⃣ إشعار الاكتمال
-      - name: 🔔 Notify completion
-        if: always()
-        run: echo "✅ اكتمل سير العمل: ${{ job.status }}"
