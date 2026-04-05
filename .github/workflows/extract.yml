@@ -25,10 +25,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          # ❌ تم حذف cache: 'npm' لأنه يتطلب ملف قفل غير موجود
 
       - name: Install deps
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Run extractor
         run: npm run extract
