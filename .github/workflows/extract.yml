@@ -27,7 +27,7 @@ jobs:
           node-version: '18'
 
       - name: Install deps
-        run: npm install --legacy-peer-deps
+        run: npm install
 
       - name: Run extractor
         run: npm run extract
